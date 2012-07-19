@@ -161,7 +161,7 @@ readData = do
         5 -> readDouble
         6 -> readString
         9 -> readArray
-        _ -> return JSNull
+        _ -> fail "cannot parse this data yet."
 
 --read sol file header
 readSOLHeader :: AMF (Int, String, Int)

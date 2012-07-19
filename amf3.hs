@@ -49,8 +49,9 @@ refTrait :: Int -> AMF AMFObjectTrait
 refTrait n = do
     AMFCache {getTraitCache = xs} <- get
     let len = length xs
-    if len <= n then
-        fail $ "There is no trait reffered by " ++ (show n)
+    if len <= n then do
+        st <- get
+        fail $ "There is no trait reffered by " ++ (show n) ++ show st
     else
         return $ xs !! (len - n - 1)
 
@@ -117,6 +118,12 @@ readString = do
         cacheString str
         return str
 
+--read a haskell string
+readNormalString :: AMF String
+readNormalString = do
+    JSString (JSONString str) <- readString
+    return str
+
 --read an array
 readArray :: AMF JSValue
 readArray = do
@@ -126,7 +133,7 @@ readArray = do
         refObject $ fromIntegral $! l `shiftR` 1
     else do
         let readAttr xs = do
-            (JSString (JSONString str)) <- readString
+            str <- readNormalString
             if str == "" then
                 return $ reverse xs
             else do
@@ -148,6 +155,58 @@ readArray = do
         cacheObject ret
         return ret
 
+--read object
+readObject :: AMF JSValue
+readObject = do
+    l <- readUInt29
+    let ref = l .&. 1
+    if ref == 0 then
+        refObject $ fromIntegral $! l `shiftR` 1
+    else do
+        let readTrait = do
+            if (l .&. 3) == 1 then
+                refTrait $ fromIntegral $! l `shiftR` 2
+            else do
+                let external = (l .&. 4) == 4
+                    dynamic = (l .&. 8) == 8
+                    count = l `shiftR` 4
+                name <- readNormalString
+                let readName n = do
+                    if n == 0 then
+                        return []
+                    else do
+                        str <- readNormalString
+                        (str:) <$> readName (n - 1)
+                members <- readName count
+                let ret = AMFObjectTrait external dynamic name members
+                cacheTrait ret
+                return ret
+        
+        trait <- readTrait
+        if isExternalizable trait then
+            fail "object externalizable encoding is not supported"
+        else do
+            let readClassProperties [] = return []
+                readClassProperties (name : xs) = do
+                    obj <- readObject
+                    ((name, obj):) <$> readClassProperties xs
+            classProperties <- readClassProperties $ getMemberNames trait
+            if isDynamic trait then do
+                let readDynamicProperties = do
+                    name <- readNormalString
+                    if name == "" then
+                        return []
+                    else do
+                        obj <- readObject
+                        ((name, obj):) <$> readDynamicProperties
+                dynamicProperties <- readDynamicProperties
+                if length classProperties == 0 then
+                    return $ JSObject $ JSONObject dynamicProperties
+                else
+                    let properties = classProperties ++ dynamicProperties
+                    in return $ JSObject $ JSONObject properties
+            else
+                return $ JSObject $ JSONObject $ classProperties
 --read data
 readData :: AMF JSValue
 readData = do
@@ -161,6 +220,7 @@ readData = do
         5 -> readDouble
         6 -> readString
         9 -> readArray
+        10 -> readObject
         _ -> fail "cannot parse this data yet."
 
 --read sol file header
@@ -184,7 +244,7 @@ readSOL = do
         if eof then
             return []
         else do
-            (JSString (JSONString name)) <- readString
+            name <- readNormalString
             value <- readData
             readPadding
             ((name, value):) <$> readPairs
@@ -204,6 +264,9 @@ main = do
     file:_ <- getArgs
     handle <- openFile file ReadMode
     contents <- B.hGetContents handle
+    --let res = runStateT readSOL $ AMFCache [] [] []
+    --let ret = runGet res contents
+    --putStrLn $ show $ ret
     let ret = parseSOL contents
     case ret of
         Right jsvalue -> putStrLn $ encode jsvalue

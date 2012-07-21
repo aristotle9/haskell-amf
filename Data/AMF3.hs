@@ -1,3 +1,5 @@
+module Data.AMF3 (parseSOL, module Text.JSON) where
+
 import Control.Monad.State
 import Data.Binary.Strict.Get
 import qualified Data.ByteString as B
@@ -5,11 +7,7 @@ import Data.ByteString.UTF8 (toString)
 import Control.Applicative ((<$>))
 import Data.Bits ((.|.), (.&.), shiftL, shiftR)
 import Text.JSON.Types
-
-import Text.JSON (encode)
-import System.Environment (getArgs)
-import System.IO
-import Data.ByteString.Char8 (pack)
+import Text.JSON
 
 data AMFObjectTrait = AMFObjectTrait {
     isExternalizable :: Bool,
@@ -258,12 +256,3 @@ parseSOL src = jsvalue where
     (jsvalue, _) = runGet getter src
     getter = evalStateT readSOL state
     state = AMFCache [] [] []
-
-main = do
-    file:_ <- getArgs
-    handle <- openFile file ReadMode
-    contents <- B.hGetContents handle
-    let ret = parseSOL contents
-    case ret of
-        Right jsvalue -> putStrLn $ encode jsvalue
-        Left message -> putStrLn $ "ParseError: " ++ message

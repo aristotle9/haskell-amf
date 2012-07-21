@@ -33,10 +33,11 @@ refObject :: Int -> AMF JSValue
 refObject n = do
     AMFCache {getObjectCache = xs} <- get
     let len = length xs
-    if len <= n then
-        fail $ "There is no object reffered by " ++ (show n)
-    else
-        return $ xs !! (len - n - 1)
+    if len <= n
+        then
+            fail $ "There is no object reffered by " ++ (show n)
+        else
+            return $ xs !! (len - n - 1)
 
 cacheTrait :: AMFObjectTrait -> AMF ()
 cacheTrait trait = do
@@ -47,10 +48,11 @@ refTrait :: Int -> AMF AMFObjectTrait
 refTrait n = do
     AMFCache {getTraitCache = xs} <- get
     let len = length xs
-    if len <= n then do
-        fail $ "There is no trait reffered by " ++ (show n)
-    else
-        return $ xs !! (len - n - 1)
+    if len <= n 
+        then
+            fail $ "There is no trait reffered by " ++ (show n)
+        else
+            return $ xs !! (len - n - 1)
 
 cacheString :: JSValue -> AMF ()
 cacheString s = do
@@ -61,15 +63,16 @@ refString :: Int -> AMF JSValue
 refString n = do
     cache@(AMFCache {getStringCache = xs}) <- get
     let len = length xs
-    if len <= n then
-        fail $ "There is no string reffered by " ++ (show n)
-    else 
-        return $ xs !! (len - n - 1)
+    if len <= n
+        then
+            fail $ "There is no string reffered by " ++ (show n)
+        else 
+            return $ xs !! (len - n - 1)
 
 readPadding :: AMF ()
 readPadding = do
     x <- fromIntegral <$> lift getWord8
-    if x == 0 then return () else do
+    if x == 0 then return () else
         lift $ fail "There must be a null char for separating."
 
 -- a usefull function
@@ -106,14 +109,14 @@ readString = do
     l <- readUInt29
     let ref = l .&. 1
     if ref == 0
-    then
-        refString $ fromIntegral $! l `shiftR` 1
-    else do
-        let str_len = fromIntegral $! l `shiftR` 1
-        b_str <- lift $ getByteString str_len
-        let str = (JSString . JSONString . toString) b_str
-        cacheString str
-        return str
+        then
+            refString $ fromIntegral $! l `shiftR` 1
+        else do
+            let str_len = fromIntegral $! l `shiftR` 1
+            b_str <- lift $ getByteString str_len
+            let str = (JSString . JSONString . toString) b_str
+            cacheString str
+            return str
 
 --read a haskell string
 readNormalString :: AMF String
@@ -126,84 +129,95 @@ readArray :: AMF JSValue
 readArray = do
     l <- readUInt29
     let ref = l .&. 1
-    if ref == 0 then
-        refObject $ fromIntegral $! l `shiftR` 1
-    else do
-        let readAttr xs = do
-            str <- readNormalString
-            if str == "" then
-                return $ reverse xs
-            else do
-                dt <- readData
-                readAttr ((str,dt):xs)
-        pairs <- readAttr []
-        let arr_len = l `shiftR` 1
-        let readArr xs n len = do
-            if n == len then
-                return $ reverse xs
-            else do
-                dt <- readData
-                readArr ((show n, dt):xs) (n + 1) len
-        arrs <- readArr [] 0 arr_len
-        let ret =   if length pairs == 0 then
-                        JSArray [dt | (_,dt) <- arrs]
-                    else
-                        JSObject $ JSONObject $ pairs ++ arrs
-        cacheObject ret
-        return ret
+    if ref == 0
+        then
+            refObject $ fromIntegral $! l `shiftR` 1
+        else do
+            let readAttr xs = do
+                str <- readNormalString
+                if str == ""
+                    then
+                        return $ reverse xs
+                    else do
+                        dt <- readData
+                        readAttr ((str,dt):xs)
+            pairs <- readAttr []
+            let arr_len = l `shiftR` 1
+            let readArr xs n len = do
+                if n == len
+                    then
+                        return $ reverse xs
+                    else do
+                        dt <- readData
+                        readArr ((show n, dt):xs) (n + 1) len
+            arrs <- readArr [] 0 arr_len
+            let ret =   if length pairs == 0
+                            then
+                                JSArray [dt | (_,dt) <- arrs]
+                            else
+                                JSObject $ JSONObject $ pairs ++ arrs
+            cacheObject ret
+            return ret
 
 --read object
 readObject :: AMF JSValue
 readObject = do
     l <- readUInt29
     let ref = l .&. 1
-    if ref == 0 then
-        refObject $ fromIntegral $! l `shiftR` 1
-    else do
-        let readTrait = do
-            if (l .&. 3) == 1 then
-                refTrait $ fromIntegral $! l `shiftR` 2
-            else do
-                let external = (l .&. 4) == 4
-                    dynamic = (l .&. 8) == 8
-                    count = l `shiftR` 4
-                name <- readNormalString
-                let readName n = do
-                    if n == 0 then
-                        return []
-                    else do
-                        str <- readNormalString
-                        (str:) <$> readName (n - 1)
-                members <- readName count
-                let ret = AMFObjectTrait external dynamic name members
-                cacheTrait ret
-                return ret
-        
-        trait <- readTrait
-        if isExternalizable trait then
-            fail "object externalizable encoding is not supported"
+    if ref == 0
+        then
+            refObject $ fromIntegral $! l `shiftR` 1
         else do
-            let readClassProperties [] = return []
-                readClassProperties (name : xs) = do
-                    obj <- readData
-                    ((name, obj):) <$> readClassProperties xs
-            classProperties <- readClassProperties $ getMemberNames trait
-            if isDynamic trait then do
-                let readDynamicProperties = do
-                    name <- readNormalString
-                    if name == "" then
-                        return []
+            let readTrait = do
+                if (l .&. 3) == 1
+                    then
+                        refTrait $ fromIntegral $! l `shiftR` 2
                     else do
-                        obj <- readData
-                        ((name, obj):) <$> readDynamicProperties
-                dynamicProperties <- readDynamicProperties
-                if length classProperties == 0 then
-                    return $ JSObject $ JSONObject dynamicProperties
-                else
-                    let properties = classProperties ++ dynamicProperties
-                    in return $ JSObject $ JSONObject properties
-            else
-                return $ JSObject $ JSONObject $ classProperties
+                        let external = (l .&. 4) == 4
+                            dynamic = (l .&. 8) == 8
+                            count = l `shiftR` 4
+                        name <- readNormalString
+                        let readName n = do
+                            if n == 0
+                                then
+                                    return []
+                                else do
+                                    str <- readNormalString
+                                    (str:) <$> readName (n - 1)
+                        members <- readName count
+                        let ret = AMFObjectTrait external dynamic name members
+                        cacheTrait ret
+                        return ret
+            
+            trait <- readTrait
+            if isExternalizable trait
+                then
+                    fail "object externalizable encoding is not supported"
+                else do
+                    let readClassProperties [] = return []
+                        readClassProperties (name : xs) = do
+                            obj <- readData
+                            ((name, obj):) <$> readClassProperties xs
+                    classProperties <- readClassProperties $ getMemberNames trait
+                    if isDynamic trait 
+                        then do
+                            let readDynamicProperties = do
+                                name <- readNormalString
+                                if name == ""
+                                    then
+                                        return []
+                                    else do
+                                        obj <- readData
+                                        ((name, obj):) <$> readDynamicProperties
+                            dynamicProperties <- readDynamicProperties
+                            if length classProperties == 0
+                                then
+                                    return $ JSObject $ JSONObject dynamicProperties
+                                else
+                                    let properties = classProperties ++ dynamicProperties
+                                    in return $ JSObject $ JSONObject properties
+                        else
+                            return $ JSObject $ JSONObject $ classProperties
 --read data
 readData :: AMF JSValue
 readData = do
@@ -238,13 +252,14 @@ readSOL = do
 
     let readPairs = do
         eof <- lift isEmpty
-        if eof then
-            return []
-        else do
-            name <- readNormalString
-            value <- readData
-            readPadding
-            ((name, value):) <$> readPairs
+        if eof
+            then
+                return []
+            else do
+                name <- readNormalString
+                value <- readData
+                readPadding
+                ((name, value):) <$> readPairs
 
     --ret <- reverse <$> readPairs
     ret <- readPairs

@@ -1,4 +1,10 @@
-module Data.AMF3 (parseSOL, module Text.JSON) where
+module Data.AMF3
+       (
+         parseSOL
+       , parseData
+       , module Text.JSON
+       )
+       where
 
 import Control.Monad.State
 import Data.Binary.Strict.Get
@@ -23,6 +29,9 @@ data AMFCache = AMFCache {
 } deriving (Show, Eq)
 
 type AMF a = StateT AMFCache Get a
+
+emptyCache :: AMFCache
+emptyCache = AMFCache [] [] []
 
 cacheObject :: JSValue -> AMF ()
 cacheObject obj = do
@@ -267,7 +276,7 @@ readSOL = do
 
 --decode sol file
 parseSOL :: B.ByteString -> Either String JSValue
-parseSOL src = jsvalue where
-    (jsvalue, _) = runGet getter src
-    getter = evalStateT readSOL state
-    state = AMFCache [] [] []
+parseSOL = fst . (runGet $ (`evalStateT` emptyCache) readSOL)
+--decode raw data
+parseData :: B.ByteString -> Either String JSValue
+parseData = fst . (runGet $ (`evalStateT` emptyCache) readData)

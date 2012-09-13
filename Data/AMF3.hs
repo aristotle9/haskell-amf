@@ -1,10 +1,8 @@
-module Data.AMF3
-       (
-         parseSOL
-       , parseData
-       , module Text.JSON
-       )
-       where
+module Data.AMF3 (
+    parseSOL
+  , parseData
+  , module Text.JSON
+  ) where
 
 import Control.Monad.State
 import Data.Binary.Strict.Get
@@ -12,26 +10,11 @@ import qualified Data.ByteString as B
 import Data.ByteString.UTF8 (toString)
 import Control.Applicative ((<$>))
 import Data.Bits ((.|.), (.&.), shiftL, shiftR)
-import Text.JSON.Types
 import Text.JSON
-
-data AMFObjectTrait = AMFObjectTrait {
-    isExternalizable :: Bool,
-    isDynamic :: Bool,
-    getClassName :: String,
-    getMemberNames :: [String]
-} deriving (Show, Eq)
-
-data AMFCache = AMFCache {
-    getObjectCache :: [JSValue],
-    getTraitCache :: [AMFObjectTrait],
-    getStringCache :: [JSValue]
-} deriving (Show, Eq)
+import Text.JSON.Types
+import Data.AMF3.Types
 
 type AMF a = StateT AMFCache Get a
-
-emptyCache :: AMFCache
-emptyCache = AMFCache [] [] []
 
 cacheObject :: JSValue -> AMF ()
 cacheObject obj = do
